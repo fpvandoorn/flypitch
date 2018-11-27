@@ -4,17 +4,19 @@ universe variable u
 
 namespace hidden
 
+#print vector
+
 inductive dvector (α : Type u) : ℕ → Type u
 | nil {} : dvector 0
 | cons : ∀{n}, α → dvector n → dvector (n+1)
 
-local notation h :: t  := dvector.cons h t
-local notation `[` l:(foldr `, ` (h t, dvector.cons h t) dvector.nil `]`) := l
-
 structure Language : Type (u+1) := 
 (functions : ℕ → Type u) (relations : ℕ → Type u)
 
-end hidden
+end hidden 
+
+local notation h :: t  := dvector.cons h t
+local notation `[` l:(foldr `, ` (h t, dvector.cons h t) dvector.nil `]`) := l
 
 open fol
 variable (L : Language.{u})
@@ -74,6 +76,15 @@ inductive preformula : ℕ → Type u
 
 end term4
 
+def not'  (f : formula L)     : formula L := f ⟹ ⊥
+def and'  (f₁ f₂ : formula L) : formula L := ∼(f₁ ⟹ ∼f₂)
+def or'   (f₁ f₂ : formula L) : formula L := ∼f₁ ⟹ f₂
+def biimp (f₁ f₂ : formula L) : formula L := (f₁ ⟹ f₂) ⊓ (f₂ ⟹ f₁)
+def ex    (f : formula L)     : formula L := ∼ ∀' ∼f
+
+
+
+
 /- de Bruijn variables -/
 
 inductive peano_functions : ℕ → Type
@@ -84,28 +95,39 @@ inductive peano_functions : ℕ → Type
 
 def L_peano : Language := ⟨peano_functions, λ n, empty⟩
 
-def L_peano_zero : term L_peano := func peano_functions.zero
-def L_peano_succ (t : term L_peano) : term L_peano := 
+def zero : term L_peano := func peano_functions.zero
+def succ (t : term L_peano) : term L_peano := 
 app (func peano_functions.succ) t
 def L_peano_plus (t₁ t₂ : term L_peano) : term L_peano := 
 @term_of_function L_peano 2 peano_functions.plus t₁ t₂
 def L_peano_mult (t₁ t₂ : term L_peano) : term L_peano := 
 @term_of_function L_peano 2 peano_functions.mult t₁ t₂
 
-local infix ` ⊹ `:100 := L_peano_plus
-local infix ` × `:150 := L_peano_mult
-instance : has_zero (term L_peano) := ⟨L_peano_zero⟩
+local infix ` +' `:100 := L_peano_plus
+local infix ` ×' `:150 := L_peano_mult
 
-#check ∀' ∀' (&0 ⊹ &1 ≃ &1 ⊹ &0)
+#check ∀' ∀' (&0 +' &1 ≃ &1 +' &0)
+/- -/
 
-def L_peano_le (x y : term L_peano) : formula L_peano := sorry 
+def L_peano_le (x y : term L_peano) : formula L_peano := sorry
 local infix ` <== `:80 := L_peano_le
-#check ∀' ∀' (&0 <== &1 ⟹ ∀' (&1 ⊹ &0 <== &2 ⊹ &0))
 
-/- ∀x y, ... -/
+#check ∀' ∀' (&0 <== &1 ⟹ ∀' (&1 +' &0 <== &2 +' &0))
+/- -/
 
-#check ∀' ∀' (∀' (&0 × &1 <== &2) ⟹ (&0 : term L_peano) ≃ L_peano_zero)
-/- ∀x y, ... -/
+#check ∀' ∀' (∀' (&0 ×' &1 <== &2) ⟹ (&0 : term L_peano) ≃ zero)
+/- -/
+
+def p_zero_ne_succ : formula L_peano := ∀' ∼(zero ≃ succ &0)
+def p_succ_inj : formula L_peano := ∀' ∀'(succ &1 ≃ succ &0 ⟹ &1 ≃ &0)
+def p_add_zero : formula L_peano := ∀'(&0 +' zero ≃ &0)
+def p_add_succ : formula L_peano := ∀' ∀'(&1 +' succ &0 ≃ succ (&1 +' &0))
+def p_mul_zero : formula L_peano := ∀'(&0 ×' zero ≃ zero)
+def p_mul_succ : formula L_peano := ∀' ∀' (&1 ×' succ &0 ≃ &1 ×' &0 +' &1)
+
+
+
+
 
 /- lifting and substitution -/
 def lift_term_at : ∀ {l}, preterm L l → ℕ → ℕ → preterm L l
@@ -135,23 +157,71 @@ def subst_formula : ∀ {l}, preformula L l → term L → ℕ → preformula L 
 | _ (∀' f)       s n := ∀' subst_formula f s (n+1)
 
 
+def L_peano_le' (t₁ t₂ : term L_peano) : formula L_peano := 
+∃' (&0 +' t₁ ↑ 1 ≃ t₂ ↑ 1)
 
+
+
+
+
+
+
+
+/- provability -/
+
+inductive prf : set (formula L) → formula L → Type u
+| axm     {Γ A} (h : A ∈ Γ) : prf Γ A
+| impI    {Γ : set $ formula L} {A B} (h : prf (insert A Γ) B) : prf Γ (A ⟹ B)
+| impE    {Γ} (A) {B} (h₁ : prf Γ (A ⟹ B)) (h₂ : prf Γ A) : prf Γ B
+| falsumE {Γ : set $ formula L} {A} (h : prf (insert ∼A Γ) ⊥) : prf Γ A
+| allI    {Γ A} (h : prf (lift_formula1 '' Γ) A) : prf Γ (∀' A)
+| allE₂   {Γ} A t (h : prf Γ (∀' A)) : prf Γ (A[t // 0])
+| ref     (Γ t) : prf Γ (t ≃ t)
+| subst₂  {Γ} (s t f) (h₁ : prf Γ (s ≃ t)) (h₂ : prf Γ (f[s // 0])) : prf Γ (f[t // 0])
+
+/- we prove meta-theoretic properties: weakening, substitution, ... -/
 
 
 
 
 /- bounded terms -/
 
-def L_peano_bd_plus {n} (t₁ t₂ : bounded_term L_peano n) : 
-  bounded_term L_peano n := 
+namespace hidden
+inductive bounded_preterm (n : ℕ) : ℕ → Type u
+| bd_var {} : ∀ (k : fin n), bounded_preterm 0
+| bd_func {} : ∀ {l : ℕ} (f : L.functions l), bounded_preterm l
+| bd_app : ∀ {l : ℕ} (t : bounded_preterm (l + 1)) (s : bounded_preterm 0), bounded_preterm l
+
+def bounded_term   (n) := bounded_preterm L n 0
+def closed_preterm (l) := bounded_preterm L 0 l
+def closed_term        := closed_preterm L 0
+
+inductive bounded_preformula : ℕ → ℕ → Type u
+| bd_falsum {} {n} : bounded_preformula n 0
+| bd_equal {n} (t₁ t₂ : bounded_term L n) : bounded_preformula n 0
+| bd_rel {n l : ℕ} (R : L.relations l) : bounded_preformula n l
+| bd_apprel {n l} (f : bounded_preformula n (l + 1)) (t : bounded_term L n) : bounded_preformula n l
+| bd_imp {n} (f₁ f₂ : bounded_preformula n 0) : bounded_preformula n 0
+| bd_all {n} (f : bounded_preformula (n+1) 0) : bounded_preformula n 0
+
+def bounded_formula (n : ℕ) := bounded_preformula L n 0
+def presentence     (l : ℕ) := bounded_preformula L 0 l
+def sentence                := presentence L 0
+
+def Theory := set (sentence L)
+end hidden
+
+namespace bounded_peano
+def L_peano_bd_plus {n} (t₁ t₂ : bounded_term L_peano n) : bounded_term L_peano n := 
 @bounded_term_of_function L_peano 2 n peano_functions.plus t₁ t₂
-def L_peano_bd_mult {n} (t₁ t₂ : bounded_term L_peano n) : 
-  bounded_term L_peano n := 
+def L_peano_bd_mult {n} (t₁ t₂ : bounded_term L_peano n) : bounded_term L_peano n := 
 @bounded_term_of_function L_peano 2 n peano_functions.mult t₁ t₂
 local infix ` +' `:100 := L_peano_bd_plus
 local infix ` ×' `:150 := L_peano_bd_mult
-def succ {n} : bounded_term L_peano n → bounded_term L_peano n := @bounded_term_of_function L_peano 1 n peano_functions.succ
+def succ {n} : bounded_term L_peano n → bounded_term L_peano n := 
+@bounded_term_of_function L_peano 1 n peano_functions.succ
 def zero {n} : bounded_term L_peano n := bd_const peano_functions.zero
+
 
 def p_zero_ne_succ : sentence L_peano := ∀' ∼(zero ≃ succ &0)
 def p_succ_inj : sentence L_peano := ∀' ∀'(succ &1 ≃ succ &0 ⟹ &1 ≃ &0)
@@ -164,9 +234,54 @@ def p_mul_succ : sentence L_peano := ∀' ∀' (&1 ×' succ &0 ≃ &1 ×' &0 +' 
 | 0     f := f
 | (n+1) f := alls n (∀' f)
 
-def p_induction {n : ℕ} (ψ : bounded_formula L_peano (n+1)) : 
-  sentence L_peano :=
+def p_induction {n : ℕ} (ψ : bounded_formula L_peano (n+1)) : sentence L_peano :=
 alls n (ψ[zero/0] ⟹ (∀' (ψ ⟹ (ψ ↑' 1 # 1)[succ &0/0]) ⟹ ∀' ψ))
 
-def L_peano_le' (t₁ t₂ : term L_peano) : formula L_peano := 
-∃' (&0 ⊹ t₁ ↑ 1 ≃ t₂ ↑ 1)
+end bounded_peano
+
+
+
+
+/- semantics -/
+
+namespace hidden
+structure Structure :=
+(carrier : Type u) 
+(fun_map : ∀{n}, L.functions n → dvector carrier n → carrier)
+(rel_map : ∀{n}, L.relations n → dvector carrier n → Prop) 
+end hidden
+namespace hidden2
+variable {L}
+def realize_term {S : Structure L} (v : ℕ → S) : 
+  ∀{l} (t : preterm L l) (xs : dvector S l), S.carrier
+| _ &k          xs := v k
+| _ (func f)    xs := S.fun_map f xs
+| _ (app t₁ t₂) xs := realize_term t₁ $ realize_term t₂ ([])::xs
+
+def realize_formula {S : Structure L} : ∀{l}, (ℕ → S) → preformula L l → dvector S l → Prop
+| _ v falsum       xs := false
+| _ v (t₁ ≃ t₂)    xs := realize_term v t₁ xs = realize_term v t₂ xs
+| _ v (rel R)      xs := S.rel_map R xs
+| _ v (apprel f t) xs := realize_formula v f $ realize_term v t ([])::xs
+| _ v (f₁ ⟹ f₂)   xs := realize_formula v f₁ xs → realize_formula v f₂ xs
+| _ v (∀' f)       xs := ∀(x : S), realize_formula (v [x // 0]) f xs
+
+@[simp] def realize_bounded_term {S : Structure L} {n} (v : dvector S n) : 
+  ∀{l} (t : bounded_preterm L n l) (xs : dvector S l), S.carrier
+| _ &k             xs := v.nth k.1 k.2
+| _ (bd_func f)    xs := S.fun_map f xs
+| _ (bd_app t₁ t₂) xs := realize_bounded_term t₁ $ realize_bounded_term t₂ ([])::xs
+
+@[simp] def realize_bounded_formula {S : Structure L} : 
+  ∀{n l} (v : dvector S n) (f : bounded_preformula L n l) (xs : dvector S l), Prop
+| _ _ v bd_falsum       xs := false
+| _ _ v (t₁ ≃ t₂)       xs := realize_bounded_term v t₁ xs = realize_bounded_term v t₂ xs
+| _ _ v (bd_rel R)      xs := S.rel_map R xs
+| _ _ v (bd_apprel f t) xs := realize_bounded_formula v f $ realize_bounded_term v t ([])::xs
+| _ _ v (f₁ ⟹ f₂)      xs := realize_bounded_formula v f₁ xs →  realize_bounded_formula v f₂ xs
+| _ _ v (∀' f)          xs := ∀(x : S), realize_bounded_formula (x::v) f xs
+
+/- Now we can prove soundness! -/
+
+end hidden2
+

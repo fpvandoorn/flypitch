@@ -159,7 +159,7 @@ def subst_formula : ∀ {l}, preformula L l → term L → ℕ → preformula L 
 
 def L_peano_le' (t₁ t₂ : term L_peano) : formula L_peano := 
 ∃' (&0 +' t₁ ↑ 1 ≃ t₂ ↑ 1)
-
+-- ∃ x, x + t₁ = t₂ 
 
 
 
@@ -174,7 +174,7 @@ inductive prf : set (formula L) → formula L → Type u
 | impI    {Γ : set $ formula L} {A B} (h : prf (insert A Γ) B) : prf Γ (A ⟹ B)
 | impE    {Γ} (A) {B} (h₁ : prf Γ (A ⟹ B)) (h₂ : prf Γ A) : prf Γ B
 | falsumE {Γ : set $ formula L} {A} (h : prf (insert ∼A Γ) ⊥) : prf Γ A
-| allI    {Γ A} (h : prf (lift_formula1 '' Γ) A) : prf Γ (∀' A)
+| allI    {Γ A} (h : prf ((λx, x ↑ 1) '' Γ) A) : prf Γ (∀' A)
 | allE₂   {Γ} A t (h : prf Γ (∀' A)) : prf Γ (A[t // 0])
 | ref     (Γ t) : prf Γ (t ≃ t)
 | subst₂  {Γ} (s t f) (h₁ : prf Γ (s ≃ t)) (h₂ : prf Γ (f[s // 0])) : prf Γ (f[t // 0])
